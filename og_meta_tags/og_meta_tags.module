@@ -1,0 +1,295 @@
+<?php
+// $Id$ og_meta_tags.module v0.01 2011.09.28
+
+/**
+ * @file
+ * Places Open Graph protocol metatags on selected node types.
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function og_meta_tags_menu() {
+  $items = array();
+  $items['admin/settings/og_meta_tags'] = array(
+    'title' => 'Open Graph meta tags',
+    'description' => 'Configure settings for the Open Graph meta tags module.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('og_meta_tags_admin_settings'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'og_meta_tags.admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter().
+ *
+ * Adds a vertical tab to specify the Open Graph protocol "object type"
+ * to be associated with this particular content type.  Only add a
+ * vertical tab if Open Graph protocol meta tags have been enabled
+ * for this content type on the module's administrative settings page.
+ *
+ * Node settings forms behave a little differently from other settings
+ * forms in that it automatically appends the machine name of the
+ * content type to the variables.
+ *
+ * See http://groups.drupal.org/node/56738#comment-159693
+ */
+function og_meta_tags_form_node_type_form_alter(&$form, $form_state) {
+  //
+  if (isset($form['#type']) && in_array($form['#node_type']->type, variable_get('og_meta_tags_node_types', array()), TRUE)) {
+    $form['og_meta_tags'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Open Graph protocol'),
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+      '#group' => 'additional_settings',
+    );
+    $form['og_meta_tags']['og_meta_tags_type'] = array(
+      '#type' => 'select',
+      '#title' => t('Open Graph protocol object type'),
+      '#description' => t('Choose the Open Graph protocol object type you wish to associate with this content type.'),
+      '#default_value' => variable_get('og_meta_tags_type_' . $form['#node_type']->type, variable_get('og_meta_tags_type', 'article')),
+      '#options' => _og_meta_tags_list_possible_types(),
+    );
+  }
+}
+
+/**
+ * Implementation of hook_help().
+ */
+function og_meta_tags_help($path, $arg) {
+  switch ($path) {
+    case 'admin/settings/og_meta_tags':
+      $output = '<p>' . t('This is the administrative interface for placing Open Graph
+        protocol &lt;meta&gt; tags on selected node types.') . '</p>';
+      $output .= '<p>' . t('The title, description and url tags are dynamically generated
+        based on the current node\'s title, teaser and url respectively. Defaults for all
+        other values are statically defined on this page. You may override some of the
+        statically defined values per content type by editing the !url1.',
+        array('!url1' => l('content type', 'admin/content/types'))) . '</p>';
+      $output .= '<p>' . t('If you have installed and configured the Facebook social plugins
+        integration module, the Facebook Application ID for this module will default to the
+        Facebook Application ID as defined on the Facebook social plugins integration
+        !url2 page.',
+        array('!url2' => l('administrative settings', 'admin/settings/fb/social/settings'))) . '</p>';
+      $output .= '<p>' . t('More information about the Open Graph protocol may be found !url3.',
+        array('!url3' => l('here', 'http://developers.facebook.com/docs/opengraph'))) . '</p>';
+      $output .= '<p>' . t('Please review the !url4 file for important installation instructions.
+        You must make a minor change to your theme\'s page.tpl.php file.',
+        array('!url4' => l('README', drupal_get_path('module', 'og_meta_tags') . '/README.txt'))) . '</p>';
+      break;
+
+    case 'admin/help#og_meta_tags':
+      $output = '<p>' . t('This module places Open Graph protocol &lt;meta&gt; tags on selected
+        node types.') . '</p>';
+      $output .= '<p>' . t('The title, description and url tags are dynamically generated
+        based on the current node\'s title, teaser and url respectively. Defaults for all
+        other values are statically defined on the module\'s !url1 page.
+        You may override some of the statically defined values per content type by editing
+        the !url2.',
+        array(
+          '!url1' => l('administrative settings', 'admin/settings/og_meta_tags'),
+          '!url2' => l('content type', 'admin/content/types'),
+          )
+        ) . '</p>';
+      $output .= '<p>' . t('If you have installed and configured the Facebook social plugins
+        integration module, the Facebook Application ID for this module will default to the
+        Facebook Application ID as defined on the Facebook social plugins integration
+        !url3 page.',
+        array('!url3' => l('administrative settings', 'admin/settings/fb/social/settings'))) . '</p>';
+      $output .= '<p>' . t('More information about the Open Graph protocol may be found !url4.',
+        array('!url4' => l('here', 'http://developers.facebook.com/docs/opengraph'))) . '</p>';
+      $output .= '<p>' . t('Please review the !url5 file for important installation instructions.
+        You must make a minor change to your theme\'s page.tpl.php file.',
+        array('!url5' => l('README', drupal_get_path('module', 'og_meta_tags') . '/README.txt'))) . '</p>';
+      break;
+  }
+  return $output;
+}
+
+/**
+ * Implementation of hook init
+ */
+
+function og_meta_tags_init() {
+  // load the current node object
+  $node = menu_get_object();
+
+  // if this is one of the selected node types, add new meta tags to the <head> section
+  $types = variable_get('og_meta_tags_node_types', array());
+  if (is_object($node) && in_array($node->type, $types, TRUE)) {
+    drupal_set_html_head(_og_meta_tags_build($node));
+  }
+}
+
+/**
+ * Helper function to build the meta tags.
+ *
+ * Called by og_meta_tags_init().
+ */
+function _og_meta_tags_build($node) {
+  // set open graph protocol meta tags: title, description and url determined dynamically
+  if (is_object($node) && !empty($node->title)) {
+    $data = '  <meta property="og:title" content="' . htmlspecialchars($node->title) . '" />' . "\n";
+  }
+  else {
+    $data = '  <meta property="og:title" content="' . htmlspecialchars(variable_get('site_name', 'Drupal')) . '" />' . "\n";
+  }
+  if (is_object($node) && !empty($node->teaser)) {
+    $data .= '  <meta property="og:description" content="' . htmlspecialchars(strip_tags(trim($node->teaser))) . '" />' . "\n";
+  }
+  else {
+    $data .= '  <meta property="og:description" content="" />' . "\n";
+  }
+  $data .= '  <meta property="og:url" content="' . url(substr(request_uri(), 1), $options=array('absolute' => TRUE)) . '" />' . "\n";
+  $data .= '  <meta property="og:image" content="' . url(($node->field_imagefb[0]['filepath']), array('absolute' => TRUE)) . '" />' . "\n";
+
+  // set open graph protocol meta tags: general information
+  $temp = variable_get('og_meta_tags_type_' . $node->type, variable_get('og_meta_tags_type', 'article'));
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:type" content="' . $temp . '" />' . "\n";
+  }
+
+  $temp = variable_get('og_meta_tags_site_name', variable_get('site_name', 'Drupal'));
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:site_name" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+
+  // set open graph protocol meta tags: facebook information
+  $temp = variable_get('og_meta_tags_fb_app_id', variable_get('fb_social_appid', ''));
+  if (!empty($temp)) {
+    $data .= '  <meta property="fb:app_id" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+  $temp = variable_get('og_meta_tags_fb_page_id', variable_get('fb_social_pageid', ''));
+  if (!empty($temp)) {
+    $data .= '  <meta property="fb:page_id" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+  $temp = variable_get('og_meta_tags_fb_admins', '');
+  if (!empty($temp)) {
+    $data .= '  <meta property="fb:admins" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+
+  // set open graph protocol meta tags: location
+  $temp = variable_get('og_meta_tags_latitude', '');
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:latitude" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+  $temp = variable_get('og_meta_tags_longitude', '');
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:longitude" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+  $temp = variable_get('og_meta_tags_street_address', '');
+  if (!empty($temp)) {
+  $data .= '  <meta property="og:street-address" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+  $temp = variable_get('og_meta_tags_locality', '');
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:locality" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+  $temp = variable_get('og_meta_tags_region', '');
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:region" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+  $temp = variable_get('og_meta_tags_postal_code', '');
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:postal-code" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+  $temp = variable_get('og_meta_tags_country_name', '');
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:country-name" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+
+  // set open graph protocol meta tags: contact
+  $temp = variable_get('og_meta_tags_email', '');
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:email" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+  $temp = variable_get('og_meta_tags_phone_number', '');
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:phone_number" content="' . htmlspecialchars($temp) . '" />' . "\n";
+  }
+  $temp = variable_get('og_meta_tags_fax_number', '');
+  if (!empty($temp)) {
+    $data .= '  <meta property="og:fax_number" content="' . htmlspecialchars($temp) . '" />';
+  }
+
+  return $data;
+}
+
+/**
+ * Helper function to build a list of possible Open Graph object types.
+ *
+ * Called by og_meta_tags_admin_settings().
+ */
+function _og_meta_tags_list_possible_types() {
+  $og_types = array(
+    'Activities' => array(
+      'activity',
+      'sport',
+    ),
+    'Businesses' => array(
+      'bar',
+      'company',
+      'cafe',
+      'hotel',
+      'restaurant',
+    ),
+    'Groups' => array(
+      'cause',
+      'sports_league',
+      'sports_team',
+    ),
+    'Organizations' => array(
+      'band',
+      'government',
+      'non_profit',
+      'school',
+      'university',
+    ),
+    'People' => array(
+      'actor',
+      'athlete',
+      'author',
+      'director',
+      'musician',
+      'politician',
+      'public_figure',
+    ),
+    'Places' => array(
+      'city',
+      'country',
+      'landmark',
+      'state_province',
+    ),
+    'Products and entertainment' => array(
+      'album',
+      'book',
+      'drink',
+      'food',
+      'game',
+      'movie',
+      'product',
+      'song',
+      'tv_show',
+    ),
+    'Websites' => array(
+      'article',
+      // website and blog are designed to represent an entire site, an og:type
+      // tag with types website or blog should usually only appear on the root
+      // of a domain. see http://developers.facebook.com/docs/opengraph
+      // 'blog',
+      // 'website',
+    ),
+  );
+
+  // Serialize the Open Graph protocol content types for the form API drop down list.
+  foreach ($og_types as $name => $group) {
+    foreach ($group as $type) {
+      $og_types_options[$name][$type] = $type;
+    }
+  }
+  return $og_types_options;
+}

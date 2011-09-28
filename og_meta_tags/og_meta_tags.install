@@ -1,0 +1,34 @@
+<?php
+// $Id$ og_meta_tags.install v0.01 2011.09.28
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Open Graph metatags custom module.
+ */
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function og_meta_tags_uninstall() {
+  // delete values specific to each node type
+  foreach (variable_get('og_meta_tags_node_types', array()) as $node_type) {
+    variable_del('og_meta_tags_type_' . $node_type);
+  }
+  // delete general settings
+  variable_del('og_meta_tags_type');
+  variable_del('og_meta_tags_image');
+  variable_del('og_meta_tags_site_name');
+  variable_del('og_meta_tags_fb_app_id');
+  variable_del('og_meta_tags_fb_admins');
+  variable_del('og_meta_tags_latitude');
+  variable_del('og_meta_tags_longitude');
+  variable_del('og_meta_tags_street_address');
+  variable_del('og_meta_tags_locality');
+  variable_del('og_meta_tags_region');
+  variable_del('og_meta_tags_postal_code');
+  variable_del('og_meta_tags_country_name');
+  variable_del('og_meta_tags_email');
+  variable_del('og_meta_tags_phone_number');
+  variable_del('og_meta_tags_fax_number');
+  variable_del('og_meta_tags_node_types');
+}

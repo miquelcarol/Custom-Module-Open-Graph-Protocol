@@ -1,0 +1,7 @@
+; $Id$ og_meta_tags.info v0.01 2011.09.28
+name = Open Graph meta tags
+description = Places Open Graph protocol metatags on selected node types.
+core = 6.x
+version = 6.x-custom
+package = Authentication
+dependencies[] = imagefield
